@@ -1,0 +1,261 @@
+---
+title: "链家武汉二手房网站数据描述性统计分析"
+author:
+  - 朱波
+date: "`r Sys.Date()`" 
+documentclass: ctexart
+keywords:
+  - 中文
+  - R Markdown
+output:
+  rticles::ctex:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+---
+
+
+```{r setup, include = FALSE,echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE,error = FALSE, warning = FALSE, message = FALSE,
+                      out.width = "100%", split = FALSE, fig.align = "center")
+#load library
+library(tidyverse)
+library(kableExtra)
+library(lubridate)
+library(scales)
+library(plotly)
+library(patchwork)
+library(ggrepel)
+library(showtext)
+showtext_auto(enable = TRUE)
+```
+
+# 你的主要发现
+
+1. 二手房房屋单价区间差距非常大，大多数集中在2万平米以下。
+
+2. 在中低房价区间，地铁、所属区域和装修等级是影响二手房单价的重要因素之一，临近地铁的二手房单价普遍高于非临近地铁，精装高于简装高于毛坯。
+  
+3. 在房型朝向选择上，南北朝向的二手房存量最大，最受消费者欢迎。
+
+4. 在高房价区间，装修等级、建筑类型和楼层等因素对二手房差异性有重要的影响。
+
+5. 建筑形式与总楼层存在一定关联，板塔结合形式的建筑平均楼层最高，平房最低。
+
+# 数据介绍
+
+本报告**链家**数据获取方式如下：
+    
+报告人在2023年9月12日获取了[链家武汉二手房网站](https://wh.lianjia.com/ershoufang/)数据。
+    
+- 链家二手房网站默认显示100页，每页30套房产，因此本数据包括3000套房产信息；
+    
+- 数据包括了页面可见部分的文本信息，具体字段及说明见作业说明。
+
+ **说明：**数据仅用于教学；由于不清楚链家数据的展示规则，因此数据可能并不是武汉二手房市场的随机抽样，结论很可能有很大的偏差，甚至可能是错误的。
+```{r}
+# 载入数据和预处理
+
+lj_wuhan<- read_csv("/Users/29723/Documents/2023-09-12_cleaned.csv")
+```
+```{r}
+lj_wuhan_factor <- data.frame(lapply(lj_wuhan, function(x) if(is.character(x)) as.factor(x) else x))
+```
+ 
+
+# 数据概览
+
+```{r}
+lj_wuhan %>% 
+  head(10) %>%
+  kable(caption = "武汉链家二手房") %>% 
+  kable_styling()
+```
+
+各变量的简短信息：
+```{r}
+glimpse(lj_wuhan)
+```
+
+各变量的简短统计：
+```{r}
+summary(lj_wuhan)
+```
+
+
+
+可以看到：
+
+- 二手房房屋单价区间差距非常大，大多数集中在2万平米以下,均价和中位数差别不大。
+
+- 两室两厅和三室两厅的户型占大多数。
+
+- 建筑面积集中在100平米左右。
+
+- 大多数楼层集中在20至30层。
+
+# 探索性分析
+
+## 房价的总体分布
+```{r}
+lj_wuhan  %>%ggplot(aes(price_sqm)) +
+    geom_histogram( binwidth = 200)
+```
+
+```{r}
+superhigh_price<-quantile(lj_wuhan$price_sqm,0.95)
+tibble(百分比=0.95,超高房价=superhigh_price)
+```
+发现：
+
+- 房价服从正态分布，且集中分布在10000至20000之间，房价整体右偏，因此会针对右偏极值部分做针对性分析。
+
+- 百分之九十五的房价低于27187.元/平，为简化描述，在以下的分析描述中，以27000元/平为超高房价的临界点。
+
+## “临近地铁”的数值描述与图形1
+```{r}
+lj_wuhan %>% filter(!near_subway %in% c("VR看装修","近地看","珞狮南","太子湖1号")) %>%  ggplot(aes(near_subway,price_sqm) )+
+  geom_boxplot()
+```
+
+发现：
+
+- 是否临近地铁作为影响房价的重要因素之一，临近地铁的房价普遍高于非临近地铁。
+
+
+
+## “临近地铁”的数值描述与图形2
+
+### “临近地铁”的总体分布
+```{r}
+lj_wuhan %>% filter(!near_subway %in% c("VR看装修","近地看","珞狮南","太子湖1号")) %>%
+    ggplot(aes(price_sqm,fill=near_subway)) +
+    geom_histogram( position = "identity",binwidth = 200)
+```
+
+### 超高房价区域“临近地铁”的数值统计与图形
+```{r}
+lj_wuhan %>% filter(!near_subway %in% c("VR看装修","近地看","珞狮南","太子湖1号"),price_sqm>27000) %>%
+   group_by(near_subway) %>% summarise(count=n())
+```
+```{r}
+lj_wuhan %>% filter(!near_subway %in% c("VR看装修","近地看","珞狮南","太子湖1号"),price_sqm>27000) %>%
+    ggplot(aes(price_sqm,fill=near_subway)) +
+    geom_histogram( position = "identity",binwidth = 300)
+```
+
+
+
+发现：
+
+- 在高房价区间，临近地铁的二手房数量多于非临近地铁；在低房价区间，非临近地铁二手房数量多于临近地铁。
+
+- 在均价15000元/平左右选择最为丰富，并且既可以选择临近地铁也可以选择非临近地铁。
+
+- 在超高房价区间，临近地铁的二手房数量远多于非临近地铁，且主要集中在30000元/平附件。
+
+## “建筑形式”的数值描述与图形
+### “建筑形式”的总体箱型图
+```{r}
+lj_wuhan  %>% filter(!property_style=="暂无数据") %>%  ggplot(aes(property_style,price_sqm) )+geom_boxplot()
+```
+### 超高房价区域，“建筑形式”的数量统计与分布
+```{r}
+lj_wuhan  %>% filter(!property_style=="暂无数据",price_sqm>27000) %>%  group_by(property_style) %>% summarise(count=n())
+```
+```{r}
+lj_wuhan  %>% filter(!property_style=="暂无数据",price_sqm>27000) %>%ggplot(aes(price_sqm,fill=property_style)) +
+    geom_histogram( position = "identity",binwidth = 300)
+ 
+```
+
+发现：
+
+- 平房作为一种落后的建筑形式，在二手房市场的存量很小且均价较低，被市场淘汰是趋势。
+
+- 板塔结合作为最受欢迎的建筑形式，平均房价最高，塔楼和板楼价格区间近似。
+
+- 在超高房价区间，板楼是最常见的建筑形式，远多于塔楼和板塔结合，塔楼和板塔结合形式数量相当,但在极高房价区间，尤其是超过42000元/平以后，板塔结合的建筑形式为主要房型。
+
+## 高层住宅房价是否高于低层住宅，平均房价最高的住宅一般是多少层？
+```{r}
+lj_height_price<-lj_wuhan %>% group_by(property_t_height) %>% summarise(price_mean_sqm=mean(price_sqm))
+ggplot(data = lj_height_price) +geom_smooth(mapping = aes(x = property_t_height, price_mean_sqm))
+```
+发现：
+
+- 高层住宅的房价高于低层住宅的房价反应了整体趋势，但在各别区间内也有特殊情况
+
+- 在2层至20层的区间，随着楼层的升高，平均房价呈现下降趋势；在20层至50层，层呈现单向递增；在50层达到峰值后，房价随着超高层的住宅出现开始回落。
+
+## 随着楼层升高，房价是否会显著升高？
+### 楼层与房价的总体箱型图
+```{r}
+lj_wuhan  %>% filter(!property_height=="NA") %>%  ggplot(aes(property_height,price_sqm) )+
+  geom_boxplot()
+```
+### 超高房价区间楼层与房价的数据统计与分布图
+```{r}
+lj_wuhan  %>% filter(!property_height=="NA",price_sqm>27000) %>%  group_by(property_height) %>% summarise(count=n())
+```
+```{r}
+lj_wuhan  %>% filter(!property_height=="NA",price_sqm>27000) %>%  ggplot(aes(price_sqm,fill=property_height)) +
+    geom_histogram( position = "identity",binwidth = 200)
+```
+
+发现：
+
+- 在普通房价区间，房价与所处楼层高低并无显著的关联。
+
+- 在超高房价区间，低层房源相对中层和高层较少，其中中层最多。低层房源主要集中在35000元/平，高层分布相对均匀，中层主要集中在区间两端。
+
+## 装修等级是否会对房价产生影响？
+### 装修等级与房价的总体箱型图
+```{r}
+lj_wuhan  %>% filter(!decoration=="其他") %>% ggplot(aes(decoration,price_sqm) )+
+  geom_boxplot()
+```
+### 超高房价区间，装修等级与房价的数量统计与图形分布
+```{r}
+lj_wuhan  %>% filter(!decoration=="其他",price_sqm>27000) %>%  group_by(decoration) %>% summarise(count=n())
+```
+```{r}
+lj_wuhan  %>% filter(!decoration=="其他",price_sqm>27000) %>%  group_by(decoration) %>% ggplot(aes(price_sqm,fill=decoration)) +
+    geom_histogram( position = "identity",binwidth = 200)
+```
+
+发现：
+
+- 在普通房价区间，装修等级对房价有着显著影响，精装的房价高于简装，简装高于毛坯。
+
+- 在超高房价区间，精装二手房数远多于简装与毛坯，精装对房价的附加值提升影响显著。
+
+- 在超高房价区间毛坯房数量少于精装和简装，超高房价区间住宅同时具有投资和消费双重属性。但在极高房价区间，在房价超过40000元/平后，毛坯房的数量分布相对增加，该区间二手房源开始呈现奢侈品属性，即无形价值相比有形价值显著提高，具有很强的纯投资行为。
+
+## 建筑形式与楼层是否存在相关？
+```{r}
+lj_wuhan  %>% filter(!property_style=="暂无数据") %>% ggplot(aes(property_style,property_t_height) )+
+  geom_boxplot()
+```
+
+```{r}
+lj_wuhan  %>% filter(!property_style=="暂无数据") %>% group_by(property_style) %>% summarise(property_t_height_mean=mean(property_t_height))
+```
+
+发现：
+
+- 建筑形式与总楼层存在一定的相关性，板塔结合形式的建筑平均楼层最高，平房最低，塔楼和板楼相近，但板楼的楼层分布的差异性最大。
+
+
+
+---
+
+# 发现总结
+
+- 从总体数据来看，15000元/平的房源是武汉二手市场交易的主流，在这个普通价格区间内，中位数和均值相差不大，可供选择的范围很多，可以综合考虑是否临近地铁，楼层建筑形式，楼层，装修等级等因素，但这个价格区间一般只可选择总楼层20-30层的楼栋。
+
+- 在中低房价区间，临近地铁、所属区域与装修等级构成了二手房房价的主要影响因素，其他因素对房价没有特别明显的关联。
+
+- 在超高房价区间，板楼作为最受欢迎的建筑形式，存量最多，同时，低层的二手房数量较少，高层和中层较多，从某种程度上来说，高房价消费中普遍青睐中层和高层，此外，精装二手房数远多于简装与毛坯，精装对房价的附加值提升影响显著，超高房价区间住宅同时具有投资和消费双重属性。
+   
+- 在极高房价区间，特别针对超过40000元/平的二手房源，板塔结合、中层和毛坯的存量较多,该区间二手房源开始呈现奢侈品属性，即无形价值相比有形价值显著提高，具有很强的纯投资行为。
